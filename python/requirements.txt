@@ -2,3 +2,5 @@ pandas
 numpy
 opencv-python
 ultralytics
+matplotlib
+requests
