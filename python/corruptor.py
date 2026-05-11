@@ -14,10 +14,15 @@ class OpticalCorruptor:
         """
         Applies physics-informed optical degradation to an image.
         
-        The two degradation channels are:
-          1. Mie scattering blur (sigma) — weighted by coverage C(t).
-             When C=0 (no droplets), no blur is applied even if sigma>0.
+        Three degradation channels, matching real foggy-lens optics:
+          1. Mie scattering blur — applied globally via PSF convolution.
+             Even partial droplet coverage scatters light across the full
+             image plane. Effective sigma scales with sqrt(C) since
+             scattering power grows with the number of scatterers.
           2. Beer-Lambert transmittance (tau) — darkens the image.
+          3. Veiling glare — scattered light adds a uniform bright haze
+             on top of the darkened image, simulating the milky/foggy
+             appearance of real condensation on glass.
         
         Args:
             img (np.ndarray): BGR image loaded via cv2.imread
@@ -32,23 +37,33 @@ class OpticalCorruptor:
         # 1. Fetch parameters (tau, sigma, AND coverage C)
         tau, sigma, coverage = self.lookup.get_optical_params(t_s, delta_t_c, rh, surface)
         
-        # 2. Apply Mie scattering blur, weighted by coverage C(t)
-        #    The blur kernel represents per-droplet scattering, but only the
-        #    fraction C of the lens surface is covered by droplets. We blend:
-        #      corrupted = C * blurred_img + (1-C) * original_img
-        #    This way, when C=0 (no condensation), the image is perfectly sharp.
-        if sigma > 0.1 and coverage > 1e-4:
-            ksize = int(2 * np.ceil(2 * sigma) + 1)
-            img_blurred = cv2.GaussianBlur(img, (ksize, ksize), sigmaX=sigma)
-            # Blend based on coverage fraction
-            img_blended = (coverage * img_blurred.astype(np.float32) +
-                           (1.0 - coverage) * img.astype(np.float32))
-            img_blended = np.clip(img_blended, 0, 255).astype(np.uint8)
+        # 2. Apply Mie scattering blur (global PSF convolution)
+        #    Forward-scattered light from droplets spreads across the
+        #    entire image plane — even 25% coverage fogs the whole view.
+        #    Effective sigma scales with sqrt(C): more droplets = stronger blur.
+        #    When C=0, effective_sigma=0 → no blur applied.
+        effective_sigma = sigma * np.sqrt(coverage)
+        
+        if effective_sigma > 0.5:
+            ksize = int(2 * np.ceil(3 * effective_sigma) + 1)
+            if ksize % 2 == 0:
+                ksize += 1
+            img_blurred = cv2.GaussianBlur(img, (ksize, ksize), sigmaX=effective_sigma)
         else:
-            img_blended = img.copy()
-            
+            img_blurred = img.copy()
+        
         # 3. Apply Beer-Lambert transmittance (attenuation)
-        img_corrupted = img_blended.astype(np.float32) * tau
+        img_dark = img_blurred.astype(np.float32) * tau
+        
+        # 4. Add veiling glare (scattered light haze)
+        #    When light is scattered by droplets, some of it becomes a
+        #    uniform bright "veil" overlaid on the image. This creates
+        #    the washed-out, milky look of real fogged glass.
+        #    Glare intensity = fraction of lost light that becomes haze.
+        glare_fraction = 0.35  # 35% of scattered light becomes haze
+        glare_intensity = (1.0 - tau) * glare_fraction * 255.0
+        img_corrupted = img_dark + glare_intensity
+        
         img_corrupted = np.clip(img_corrupted, 0, 255).astype(np.uint8)
         
         return img_corrupted
