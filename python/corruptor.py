@@ -14,6 +14,11 @@ class OpticalCorruptor:
         """
         Applies physics-informed optical degradation to an image.
         
+        The two degradation channels are:
+          1. Mie scattering blur (sigma) — weighted by coverage C(t).
+             When C=0 (no droplets), no blur is applied even if sigma>0.
+          2. Beer-Lambert transmittance (tau) — darkens the image.
+        
         Args:
             img (np.ndarray): BGR image loaded via cv2.imread
             t_s (float): Time in seconds
@@ -24,20 +29,26 @@ class OpticalCorruptor:
         Returns:
             np.ndarray: Corrupted image
         """
-        # 1. Fetch parameters
-        tau, sigma = self.lookup.get_optical_params(t_s, delta_t_c, rh, surface)
+        # 1. Fetch parameters (tau, sigma, AND coverage C)
+        tau, sigma, coverage = self.lookup.get_optical_params(t_s, delta_t_c, rh, surface)
         
-        # 2. Apply Mie scattering (Gaussian blur based on sigma)
-        if sigma > 0.1:
-            # Kernel size must be odd and positive
+        # 2. Apply Mie scattering blur, weighted by coverage C(t)
+        #    The blur kernel represents per-droplet scattering, but only the
+        #    fraction C of the lens surface is covered by droplets. We blend:
+        #      corrupted = C * blurred_img + (1-C) * original_img
+        #    This way, when C=0 (no condensation), the image is perfectly sharp.
+        if sigma > 0.1 and coverage > 1e-4:
             ksize = int(2 * np.ceil(2 * sigma) + 1)
             img_blurred = cv2.GaussianBlur(img, (ksize, ksize), sigmaX=sigma)
+            # Blend based on coverage fraction
+            img_blended = (coverage * img_blurred.astype(np.float32) +
+                           (1.0 - coverage) * img.astype(np.float32))
+            img_blended = np.clip(img_blended, 0, 255).astype(np.uint8)
         else:
-            img_blurred = img.copy()
+            img_blended = img.copy()
             
         # 3. Apply Beer-Lambert transmittance (attenuation)
-        # We multiply pixel intensities by tau (0.0 to 1.0)
-        img_corrupted = img_blurred.astype(np.float32) * tau
+        img_corrupted = img_blended.astype(np.float32) * tau
         img_corrupted = np.clip(img_corrupted, 0, 255).astype(np.uint8)
         
         return img_corrupted

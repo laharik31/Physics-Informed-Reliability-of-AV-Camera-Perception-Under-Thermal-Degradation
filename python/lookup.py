@@ -27,9 +27,10 @@ class PhysicsLookup:
             surface (str): Surface treatment type (e.g., 'Untreated glass').
             
         Returns:
-            tuple: (tau, sigma_Mie_px)
+            tuple: (tau, sigma_Mie_px, coverage)
                 - tau: Optical transmittance (0 to 1)
                 - sigma_Mie_px: Mie scattering PSF width in pixels
+                - coverage: Condensation coverage fraction C(t) (0 to 1)
         """
         # 1. Get sigma_Mie_px (only dependent on t_s in this specific kernel lookup)
         # We linearly interpolate based on t_s
@@ -47,13 +48,14 @@ class PhysicsLookup:
         if df_filtered.empty:
             raise ValueError(f"No tau data found for DeltaT_C={delta_t_c}, RH={rh}, surface='{surface}'.")
             
-        # Linearly interpolate tau based on t_s
+        # Linearly interpolate tau and coverage based on t_s
         tau = np.interp(t_s, df_filtered['t_s'], df_filtered['tau'])
+        coverage = np.interp(t_s, df_filtered['t_s'], df_filtered['C'])
         
-        return float(tau), float(sigma)
+        return float(tau), float(sigma), float(coverage)
 
 if __name__ == "__main__":
     # Quick test
     lookup = PhysicsLookup()
-    tau, sigma = lookup.get_optical_params(180, delta_t_c=5, rh=0.60, surface="Untreated glass")
-    print(f"Test at t=180s: tau={tau:.4f}, sigma={sigma:.4f}px")
+    tau, sigma, cov = lookup.get_optical_params(180, delta_t_c=5, rh=0.60, surface="Untreated glass")
+    print(f"Test at t=180s: tau={tau:.4f}, sigma={sigma:.4f}px, C={cov:.4f}")
