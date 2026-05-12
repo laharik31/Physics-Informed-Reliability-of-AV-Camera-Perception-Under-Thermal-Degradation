@@ -1,7 +1,7 @@
 # RAMS 2027 — Physics-Informed Reliability of AV Camera Perception Under Thermal Degradation
 
 **Conference:** RAMS 2027  
-**Team:** Sri Lahari Kari, Yashitha, Aditya, Vijay  
+**Team:** Yashitha Thuraka, Sri Lahari Kari, Devi Aditya Dantuluri, Vijay Kumar Kosaraju
 
 ---
 
