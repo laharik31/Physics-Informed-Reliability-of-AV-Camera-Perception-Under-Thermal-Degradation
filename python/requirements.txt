@@ -4,3 +4,4 @@ opencv-python
 ultralytics
 matplotlib
 requests
+pyyaml
