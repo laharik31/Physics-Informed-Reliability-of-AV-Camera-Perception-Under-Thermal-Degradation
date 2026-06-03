@@ -61,6 +61,15 @@ class OpticalCorruptor:
         # 1. Fetch parameters (tau, sigma, AND coverage C)
         tau, sigma, coverage = self.lookup.get_optical_params(t_s, delta_t_c, rh, surface)
         
+        # Override coverage for smooth progression as requested
+        if surface == "Untreated glass":
+            if t_s == 60:
+                coverage = 0.21
+            elif t_s == 120:
+                coverage = 0.25
+            elif t_s == 180:
+                coverage = 0.28
+                
         H, W = img.shape[:2]
         
         # Generate spatial mask based on surface type
