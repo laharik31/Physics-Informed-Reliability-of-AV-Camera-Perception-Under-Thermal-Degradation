@@ -4,18 +4,19 @@ BDD100K True mAP Experiment
 Evaluates YOLOv8 detection performance under physics-informed thermal
 degradation using the BDD100K validation set with ground-truth annotations.
 
-For each time snapshot:
-  1. Corrupts all BDD100K val images using OpticalCorruptor
-  2. Runs Ultralytics model.val() to compute true mAP@50 and mAP@50-95
-  3. Records metrics and generates an availability curve
+Supports multi-surface evaluation: loops through all glass coatings and
+generates both per-surface and combined availability curves.
 
 Results are saved to:
-  results/bdd_availability_curve.png   — mAP vs time plot
-  results/bdd_results.csv              — numerical results table
+  results/bdd_results.csv                    — numerical results (all surfaces)
+  results/bdd_availability_curve.png         — single-surface plot (backward compat)
+  results/bdd_availability_curve_combined.png — combined multi-surface comparison
 
 Usage:
   python3 python/experiment_bdd.py
-  python3 python/experiment_bdd.py --max-images 500   # quick test with subset
+  python3 python/experiment_bdd.py --max-images 500       # quick test
+  python3 python/experiment_bdd.py --surface "Untreated glass"  # single surface
+  python3 python/experiment_bdd.py --all-surfaces          # all 4 coatings
 """
 
 import cv2
@@ -30,118 +31,65 @@ from pathlib import Path
 from ultralytics import YOLO
 from corruptor import OpticalCorruptor
 from lookup import PhysicsLookup
+import yaml
+
+
+# All available glass coatings in the physics lookup
+ALL_SURFACES = [
+    "Untreated glass",
+    "Hydrophilic coat",
+    "Hydrophobic coat",
+    "Superhydrophobic",
+]
+
+# Colors and markers for combined plot
+SURFACE_STYLES = {
+    "Untreated glass":   {"color": "#E53935", "marker": "o", "label": "Untreated Glass"},
+    "Hydrophilic coat":  {"color": "#1E88E5", "marker": "s", "label": "Hydrophilic"},
+    "Hydrophobic coat":  {"color": "#43A047", "marker": "D", "label": "Hydrophobic"},
+    "Superhydrophobic":  {"color": "#8E24AA", "marker": "^", "label": "Superhydrophobic"},
+}
 
 
 def corrupt_dataset(image_dir: str, output_dir: str, corruptor: OpticalCorruptor,
                     t_s: float, delta_t_c: float, rh: float, surface: str,
                     max_images: int = None) -> int:
-    """
-    Apply physics-informed corruption to all images in a directory.
-    
-    Args:
-        image_dir:  Path to clean validation images
-        output_dir: Path to write corrupted images (same filenames)
-        corruptor:  OpticalCorruptor instance
-        t_s:        Simulation time in seconds
-        delta_t_c:  Subcooling ΔT in °C
-        rh:         Relative humidity (0-1)
-        surface:    Surface treatment type
-        max_images: If set, only process this many images (for quick testing)
-    
-    Returns:
-        Number of images processed
-    """
+    """Apply physics-informed corruption to all images in a directory."""
     os.makedirs(output_dir, exist_ok=True)
-
     image_files = sorted([f for f in os.listdir(image_dir) if f.endswith('.jpg')])
     if max_images is not None:
         image_files = image_files[:max_images]
 
     for i, filename in enumerate(image_files):
-        img_path = os.path.join(image_dir, filename)
-        img = cv2.imread(img_path)
+        img = cv2.imread(os.path.join(image_dir, filename))
         if img is None:
             continue
-
         corrupted = corruptor.corrupt_image(img, t_s=t_s, delta_t_c=delta_t_c,
                                             rh=rh, surface=surface)
         cv2.imwrite(os.path.join(output_dir, filename), corrupted)
-
         if (i + 1) % 500 == 0:
             print(f"    Corrupted {i+1}/{len(image_files)} images...")
-
     return len(image_files)
 
 
-def run_experiment(data_root: str = "data/bdd100k", max_images: int = None):
-    """
-    Main experiment loop: corrupt → validate → record → plot.
-    """
-    data_root = os.path.abspath(data_root)
-    yaml_path = os.path.join(data_root, "bdd100k.yaml")
-
-    # ── Validate setup ──────────────────────────────────────────────
-    if not os.path.isfile(yaml_path):
-        print("ERROR: bdd100k.yaml not found. Run setup_bdd100k.py first.")
-        print("  python3 python/setup_bdd100k.py")
-        return
-
-    clean_image_dir = os.path.join(data_root, "images", "val")
-    label_dir = os.path.join(data_root, "labels", "val")
-
-    if not os.path.isdir(clean_image_dir):
-        print(f"ERROR: Validation images not found at {clean_image_dir}")
-        return
-    if not os.path.isdir(label_dir):
-        print(f"ERROR: YOLO labels not found at {label_dir}")
-        return
-
-    num_images = len([f for f in os.listdir(clean_image_dir) if f.endswith('.jpg')])
-    effective_count = min(num_images, max_images) if max_images else num_images
-    print(f"BDD100K Experiment: {effective_count} images"
-          f"{' (subset)' if max_images else ''}")
-
-    # ── Setup ───────────────────────────────────────────────────────
-    print("Loading YOLOv8n model...")
-    model = YOLO('yolov8n.pt')
-
-    lookup = PhysicsLookup()
-    corruptor = OpticalCorruptor(lookup)
-
-    # Time snapshots (seconds)
-    t_snapshots = [0, 60, 120, 180, 300, 450, 600]
-
-    # Environmental conditions (matches Kim/Hendrycks fog calibration)
-    delta_t = 5
-    rh = 0.80
-    surface = "Untreated glass"
-
-    # Directory for temporarily storing corrupted images
-    # We use "images/val_corrupted" and create a matching "labels/val_corrupted"
-    # symlink because Ultralytics auto-discovers labels by replacing "images"
-    # with "labels" in the path (e.g., images/val_corrupted → labels/val_corrupted).
-    corrupted_base = os.path.join(data_root, "images", "val_corrupted")
-
-    # Results storage
+def run_single_surface(model, lookup, corruptor, surface, t_snapshots,
+                       delta_t, rh, data_root, clean_image_dir, label_dir,
+                       corrupted_base, max_images):
+    """Run the evaluation loop for a single surface coating."""
     results = []
-
-    # ── Evaluation loop ─────────────────────────────────────────────
-    import yaml
 
     for t in t_snapshots:
         tau, sigma, coverage = lookup.get_optical_params(t, delta_t, rh, surface)
         print(f"\n{'='*60}")
-        print(f"Snapshot t={t}s  |  τ={tau:.4f}  σ={sigma:.2f}px  C={coverage:.4f}")
+        print(f"[{surface}] t={t}s  |  τ={tau:.4f}  σ={sigma:.2f}px  C={coverage:.4f}")
         print(f"{'='*60}")
 
-        # Clean up any previous iteration's corrupted images
+        # Clean up previous iteration
         if os.path.isdir(corrupted_base):
             shutil.rmtree(corrupted_base)
 
         if t == 0 and coverage == 0.0:
-            # At t=0, images are clean — copy originals into val_corrupted
-            # (We can't use the symlink at images/val directly because
-            #  Ultralytics resolves symlinks and breaks label auto-discovery)
+            # Clean images — copy originals into val_corrupted
             print("  Copying clean images (no corruption needed)...")
             os.makedirs(corrupted_base, exist_ok=True)
             image_files = sorted([f for f in os.listdir(clean_image_dir) if f.endswith('.jpg')])
@@ -152,31 +100,24 @@ def run_experiment(data_root: str = "data/bdd100k", max_images: int = None):
                              os.path.join(corrupted_base, f))
             print(f"  Copied {len(image_files)} images → {corrupted_base}")
         else:
-            # Corrupt images and save to temporary directory
             print(f"  Corrupting images...")
             n = corrupt_dataset(clean_image_dir, corrupted_base, corruptor,
                                 t_s=t, delta_t_c=delta_t, rh=rh, surface=surface,
                                 max_images=max_images)
             print(f"  Corrupted {n} images → {corrupted_base}")
 
-        # ── Set up labels for val_corrupted ─────────────────────────
-        # Ultralytics finds labels by replacing "images" → "labels" in the
-        # val path: images/val_corrupted → labels/val_corrupted
+        # Set up labels for val_corrupted
         corrupted_label_link = os.path.join(data_root, "labels", "val_corrupted")
-
-        # Remove stale cache files that Ultralytics may have written
         cache_file = corrupted_label_link + ".cache"
         if os.path.exists(cache_file):
             os.remove(cache_file)
 
         if max_images is not None:
-            # Subset mode: copy only the matching label files
             if os.path.islink(corrupted_label_link):
                 os.unlink(corrupted_label_link)
             if os.path.isdir(corrupted_label_link):
                 shutil.rmtree(corrupted_label_link)
             os.makedirs(corrupted_label_link, exist_ok=True)
-
             for f in os.listdir(corrupted_base):
                 if f.endswith('.jpg'):
                     lbl_name = Path(f).stem + ".txt"
@@ -185,18 +126,17 @@ def run_experiment(data_root: str = "data/bdd100k", max_images: int = None):
                     if os.path.exists(src):
                         shutil.copy2(src, dst)
         else:
-            # Full dataset: symlink labels/val_corrupted → labels/val
             if os.path.islink(corrupted_label_link):
                 os.unlink(corrupted_label_link)
             elif os.path.isdir(corrupted_label_link):
                 shutil.rmtree(corrupted_label_link)
             os.symlink(os.path.abspath(label_dir), corrupted_label_link)
 
-        # ── Build eval YAML ─────────────────────────────────────────
+        # Build eval YAML
         temp_yaml_path = os.path.join(data_root, "bdd100k_eval.yaml")
         eval_config = {
             "path": data_root,
-            "train": "images/val_corrupted",  # Required by Ultralytics (not used)
+            "train": "images/val_corrupted",
             "val": "images/val_corrupted",
             "nc": 10,
             "names": [
@@ -225,6 +165,7 @@ def run_experiment(data_root: str = "data/bdd100k", max_images: int = None):
             map50_95 = 0.0
 
         results.append({
+            "surface": surface,
             "t_s": t,
             "tau": tau,
             "sigma": sigma,
@@ -233,62 +174,37 @@ def run_experiment(data_root: str = "data/bdd100k", max_images: int = None):
             "mAP50_95": map50_95,
         })
 
-        # Clean up corrupted images to save disk space
+        # Clean up corrupted images
         if os.path.isdir(corrupted_base):
             shutil.rmtree(corrupted_base)
 
     # Clean up temp files
-    temp_yaml = os.path.join(data_root, "bdd100k_eval.yaml")
-    if os.path.exists(temp_yaml):
-        os.remove(temp_yaml)
+    for tmp in [os.path.join(data_root, "bdd100k_eval.yaml")]:
+        if os.path.exists(tmp):
+            os.remove(tmp)
     corrupted_label_link = os.path.join(data_root, "labels", "val_corrupted")
     if os.path.islink(corrupted_label_link):
         os.unlink(corrupted_label_link)
     elif os.path.isdir(corrupted_label_link):
         shutil.rmtree(corrupted_label_link)
 
-    # ── Save numerical results ──────────────────────────────────────
-    out_dir = "results"
-    os.makedirs(out_dir, exist_ok=True)
+    return results
 
-    csv_path = os.path.join(out_dir, "bdd_results.csv")
-    with open(csv_path, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=["t_s", "tau", "sigma", "coverage",
-                                                "mAP50", "mAP50_95"])
-        writer.writeheader()
-        writer.writerows(results)
-    print(f"\nNumerical results saved to {csv_path}")
 
-    # ── Print results table ─────────────────────────────────────────
-    baseline_map50 = results[0]["mAP50"] if results[0]["mAP50"] > 0 else 1.0
-    print(f"\n{'='*75}")
-    print(f"{'Time':>6s}  {'τ':>6s}  {'C':>6s}  {'mAP@50':>8s}  {'mAP@50-95':>10s}  {'% Drop':>8s}")
-    print(f"{'-'*75}")
-    for r in results:
-        drop = ((r["mAP50"] - baseline_map50) / baseline_map50) * 100
-        print(f"{r['t_s']:>5.0f}s  {r['tau']:>6.4f}  {r['coverage']:>6.4f}  "
-              f"{r['mAP50']:>8.4f}  {r['mAP50_95']:>10.4f}  {drop:>+7.1f}%")
-    print(f"{'='*75}")
-
-    # ── Plot availability curve ─────────────────────────────────────
+def plot_single_surface(results, surface, rh, delta_t, out_dir):
+    """Generate availability curve for a single surface (backward compatible)."""
     times = [r["t_s"] for r in results]
     map50_vals = [r["mAP50"] for r in results]
     map50_95_vals = [r["mAP50_95"] for r in results]
 
     fig, ax = plt.subplots(figsize=(12, 7))
-
     ax.plot(times, map50_vals, marker='o', linestyle='-', color='#2196F3',
             linewidth=2.5, markersize=8, label='mAP@50', zorder=5)
     ax.plot(times, map50_95_vals, marker='s', linestyle='--', color='#FF5722',
             linewidth=2, markersize=7, label='mAP@50-95', zorder=5)
-
-    # Shade the blackout window (condensation active)
     ax.axvspan(0, 240, alpha=0.08, color='red', label='Condensation window')
-
-    # Mark heater activation
     ax.axvline(x=180, color='green', linestyle=':', linewidth=1.5,
                label='Heater ON (t=180s)')
-
     ax.set_title(f'YOLOv8 Detection on BDD100K under Thermal Degradation\n'
                  f'(RH={rh*100:.0f}%, ΔT={delta_t}°C, {surface})',
                  fontsize=14, fontweight='bold')
@@ -297,12 +213,158 @@ def run_experiment(data_root: str = "data/bdd100k", max_images: int = None):
     ax.legend(loc='lower right', fontsize=11)
     ax.grid(True, alpha=0.3)
     ax.set_xlim(-10, 620)
-
     plt.tight_layout()
-    plot_path = os.path.join(out_dir, "bdd_availability_curve.png")
+
+    safe_name = surface.replace(" ", "_").lower()
+    plot_path = os.path.join(out_dir, f"bdd_availability_curve_{safe_name}.png")
     fig.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
-    print(f"Availability curve saved to {plot_path}")
+    print(f"  Availability curve saved to {plot_path}")
+
+    # Also save as the default name if it's untreated glass (backward compat)
+    if surface == "Untreated glass":
+        default_path = os.path.join(out_dir, "bdd_availability_curve.png")
+        fig2, ax2 = plt.subplots(figsize=(12, 7))
+        ax2.plot(times, map50_vals, marker='o', linestyle='-', color='#2196F3',
+                linewidth=2.5, markersize=8, label='mAP@50', zorder=5)
+        ax2.plot(times, map50_95_vals, marker='s', linestyle='--', color='#FF5722',
+                linewidth=2, markersize=7, label='mAP@50-95', zorder=5)
+        ax2.axvspan(0, 240, alpha=0.08, color='red', label='Condensation window')
+        ax2.axvline(x=180, color='green', linestyle=':', linewidth=1.5,
+                   label='Heater ON (t=180s)')
+        ax2.set_title(f'YOLOv8 Detection on BDD100K under Thermal Degradation\n'
+                     f'(RH={rh*100:.0f}%, ΔT={delta_t}°C, {surface})',
+                     fontsize=14, fontweight='bold')
+        ax2.set_xlabel('Time (s)', fontsize=12)
+        ax2.set_ylabel('mAP', fontsize=12)
+        ax2.legend(loc='lower right', fontsize=11)
+        ax2.grid(True, alpha=0.3)
+        ax2.set_xlim(-10, 620)
+        plt.tight_layout()
+        fig2.savefig(default_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+
+def plot_combined(all_results, rh, delta_t, out_dir):
+    """Generate a combined availability curve comparing all surfaces."""
+    fig, ax = plt.subplots(figsize=(14, 8))
+
+    for surface, results in all_results.items():
+        style = SURFACE_STYLES[surface]
+        times = [r["t_s"] for r in results]
+        map50_vals = [r["mAP50"] for r in results]
+        ax.plot(times, map50_vals, marker=style["marker"], linestyle='-',
+                color=style["color"], linewidth=2.5, markersize=9,
+                label=style["label"], zorder=5)
+
+    # Shade condensation window and mark heater activation
+    ax.axvspan(0, 240, alpha=0.06, color='red', label='Condensation window')
+    ax.axvline(x=180, color='gray', linestyle=':', linewidth=1.5,
+               label='Heater ON (t=180s)')
+
+    ax.set_title(f'Glass Coating Comparison: mAP@50 under Thermal Degradation\n'
+                 f'(BDD100K val, RH={rh*100:.0f}%, ΔT={delta_t}°C)',
+                 fontsize=14, fontweight='bold')
+    ax.set_xlabel('Time (s)', fontsize=13)
+    ax.set_ylabel('mAP@50', fontsize=13)
+    ax.legend(loc='lower right', fontsize=12, framealpha=0.9)
+    ax.grid(True, alpha=0.3)
+    ax.set_xlim(-10, 620)
+    plt.tight_layout()
+
+    plot_path = os.path.join(out_dir, "bdd_availability_curve_combined.png")
+    fig.savefig(plot_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"\nCombined availability curve saved to {plot_path}")
+
+
+def run_experiment(data_root: str = "data/bdd100k", max_images: int = None,
+                   surfaces: list = None):
+    """Main experiment: evaluate one or more surface coatings."""
+    data_root = os.path.abspath(data_root)
+    yaml_path = os.path.join(data_root, "bdd100k.yaml")
+
+    if not os.path.isfile(yaml_path):
+        print("ERROR: bdd100k.yaml not found. Run setup_bdd100k.py first.")
+        return
+
+    clean_image_dir = os.path.join(data_root, "images", "val")
+    label_dir = os.path.join(data_root, "labels", "val")
+
+    if not os.path.isdir(clean_image_dir):
+        print(f"ERROR: Validation images not found at {clean_image_dir}")
+        return
+    if not os.path.isdir(label_dir):
+        print(f"ERROR: YOLO labels not found at {label_dir}")
+        return
+
+    if surfaces is None:
+        surfaces = ["Untreated glass"]
+
+    num_images = len([f for f in os.listdir(clean_image_dir) if f.endswith('.jpg')])
+    effective_count = min(num_images, max_images) if max_images else num_images
+
+    print(f"BDD100K Multi-Surface Experiment")
+    print(f"  Images: {effective_count}{' (subset)' if max_images else ''}")
+    print(f"  Surfaces: {surfaces}")
+
+    # Setup
+    print("Loading YOLOv8n model...")
+    model = YOLO('yolov8n.pt')
+    lookup = PhysicsLookup()
+    corruptor = OpticalCorruptor(lookup)
+
+    t_snapshots = [0, 60, 120, 180, 300, 450, 600]
+    delta_t = 5
+    rh = 0.80
+    corrupted_base = os.path.join(data_root, "images", "val_corrupted")
+    out_dir = "results"
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Run all surfaces
+    all_results = {}
+    all_flat = []
+
+    for surface in surfaces:
+        print(f"\n{'#'*70}")
+        print(f"# SURFACE: {surface}")
+        print(f"{'#'*70}")
+
+        results = run_single_surface(
+            model, lookup, corruptor, surface, t_snapshots,
+            delta_t, rh, data_root, clean_image_dir, label_dir,
+            corrupted_base, max_images
+        )
+        all_results[surface] = results
+        all_flat.extend(results)
+
+        # Print per-surface results table
+        baseline_map50 = results[0]["mAP50"] if results[0]["mAP50"] > 0 else 1.0
+        print(f"\n{'='*75}")
+        print(f"  [{surface}] Results")
+        print(f"{'Time':>6s}  {'τ':>6s}  {'C':>6s}  {'mAP@50':>8s}  {'mAP@50-95':>10s}  {'% Drop':>8s}")
+        print(f"{'-'*75}")
+        for r in results:
+            drop = ((r["mAP50"] - baseline_map50) / baseline_map50) * 100
+            print(f"{r['t_s']:>5.0f}s  {r['tau']:>6.4f}  {r['coverage']:>6.4f}  "
+                  f"{r['mAP50']:>8.4f}  {r['mAP50_95']:>10.4f}  {drop:>+7.1f}%")
+        print(f"{'='*75}")
+
+        # Generate per-surface availability curve
+        plot_single_surface(results, surface, rh, delta_t, out_dir)
+
+    # Save all results to CSV
+    csv_path = os.path.join(out_dir, "bdd_results.csv")
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=["surface", "t_s", "tau", "sigma",
+                                                "coverage", "mAP50", "mAP50_95"])
+        writer.writeheader()
+        writer.writerows(all_flat)
+    print(f"\nNumerical results saved to {csv_path}")
+
+    # Generate combined plot if multiple surfaces
+    if len(surfaces) > 1:
+        plot_combined(all_results, rh, delta_t, out_dir)
 
     print(f"\n✅ BDD100K experiment complete!")
 
@@ -312,6 +374,19 @@ if __name__ == "__main__":
     parser.add_argument("--data-root", default="data/bdd100k",
                         help="Path to BDD100K data root (default: data/bdd100k)")
     parser.add_argument("--max-images", type=int, default=None,
-                        help="Limit number of images for quick testing (default: all)")
+                        help="Limit number of images for quick testing")
+    parser.add_argument("--surface", type=str, default=None,
+                        help="Single surface to evaluate (default: Untreated glass)")
+    parser.add_argument("--all-surfaces", action="store_true",
+                        help="Evaluate all 4 glass coatings")
     args = parser.parse_args()
-    run_experiment(data_root=args.data_root, max_images=args.max_images)
+
+    if args.all_surfaces:
+        surfaces = ALL_SURFACES
+    elif args.surface:
+        surfaces = [args.surface]
+    else:
+        surfaces = ["Untreated glass"]
+
+    run_experiment(data_root=args.data_root, max_images=args.max_images,
+                   surfaces=surfaces)
