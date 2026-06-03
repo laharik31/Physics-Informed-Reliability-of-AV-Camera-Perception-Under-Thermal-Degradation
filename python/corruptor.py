@@ -10,7 +10,7 @@ class OpticalCorruptor:
         """
         self.lookup = lookup
         
-    def generate_spatial_mask(self, H, W, coverage):
+    def generate_spatial_mask(self, H, W, coverage, t_s):
         """
         Generates a 2D spatial mask for patchy condensation with a radial bias.
         Values range [0, 1] representing localized condensation intensity.
@@ -38,8 +38,13 @@ class OpticalCorruptor:
         combined_field = noise_up + 0.6 * dist_from_center
         
         # Normalize coverage against a typical peak equilibrium coverage (~0.30 for Untreated glass)
-        # This allows the mask to represent macro-level fog progression.
         C_norm = min(1.0, coverage / 0.30)
+        
+        # Artificial time-delay for the spatial spread to match visual and physical expectations
+        # (The center of the lens takes longer to cool down, so fog creeps from the edges inward)
+        if t_s <= 180:
+            time_factor = t_s / 180.0
+            C_norm = C_norm * time_factor
         
         # 3. Thresholding to match normalized coverage C_norm
         threshold = np.percentile(combined_field, (1.0 - C_norm) * 100)
@@ -67,7 +72,7 @@ class OpticalCorruptor:
         elif coverage == 0.0:
             mask = np.zeros((H, W), dtype=np.float32)
         else:
-            mask = self.generate_spatial_mask(H, W, coverage)
+            mask = self.generate_spatial_mask(H, W, coverage, t_s)
             
         mask_3c = np.expand_dims(mask, axis=-1)
         
