@@ -10,58 +10,88 @@ class OpticalCorruptor:
         """
         self.lookup = lookup
         
+    def generate_spatial_mask(self, H, W, coverage):
+        """
+        Generates a 2D spatial mask for patchy condensation with a radial bias.
+        Values range [0, 1] representing localized condensation intensity.
+        """
+        if coverage <= 0.0:
+            return np.zeros((H, W), dtype=np.float32)
+        if coverage >= 1.0:
+            return np.ones((H, W), dtype=np.float32)
+            
+        # 1. Low-frequency noise (32x32)
+        noise = np.random.rand(32, 32).astype(np.float32)
+        noise_up = cv2.resize(noise, (W, H), interpolation=cv2.INTER_CUBIC)
+        
+        # 2. Radial Bias
+        # Create coordinate grids
+        y, x = np.ogrid[:H, :W]
+        center_y, center_x = H / 2, W / 2
+        # Calculate distance from center, normalized to [0, 1] at the corners
+        max_dist = np.sqrt(center_y**2 + center_x**2)
+        dist_from_center = np.sqrt((x - center_x)**2 + (y - center_y)**2) / max_dist
+        
+        # Combine noise with radial bias.
+        # Higher distance = more likely to fog.
+        # Weight of radial bias is 0.6 to keep noise relevant but strongly biased.
+        combined_field = noise_up + 0.6 * dist_from_center
+        
+        # Normalize coverage against a typical peak equilibrium coverage (~0.30 for Untreated glass)
+        # This allows the mask to represent macro-level fog progression.
+        C_norm = min(1.0, coverage / 0.30)
+        
+        # 3. Thresholding to match normalized coverage C_norm
+        threshold = np.percentile(combined_field, (1.0 - C_norm) * 100)
+        
+        # Create a soft mask using a sigmoid transition
+        mask = 1.0 / (1.0 + np.exp(-15.0 * (combined_field - threshold)))
+        
+        return mask.astype(np.float32)
+
     def corrupt_image(self, img, t_s, delta_t_c=5, rh=0.80, surface="Untreated glass"):
         """
         Applies physics-informed optical degradation to an image.
-        
-        Three degradation channels, matching real foggy-lens optics:
-          1. Mie scattering blur — applied globally via PSF convolution.
-             Even partial droplet coverage scatters light across the full
-             image plane. Effective sigma scales with sqrt(C) since
-             scattering power grows with the number of scatterers.
-          2. Beer-Lambert transmittance (tau) — darkens the image.
-          3. Veiling glare — scattered light adds a uniform bright haze
-             on top of the darkened image, simulating the milky/foggy
-             appearance of real condensation on glass.
-        
-        Args:
-            img (np.ndarray): BGR image loaded via cv2.imread
-            t_s (float): Time in seconds
-            delta_t_c (float): Delta T
-            rh (float): Relative humidity
-            surface (str): Surface treatment
-            
-        Returns:
-            np.ndarray: Corrupted image
         """
         # 1. Fetch parameters (tau, sigma, AND coverage C)
         tau, sigma, coverage = self.lookup.get_optical_params(t_s, delta_t_c, rh, surface)
         
-        # 2. Apply Mie scattering blur (global PSF convolution)
-        #    Forward-scattered light from droplets spreads across the
-        #    entire image plane — even 25% coverage fogs the whole view.
-        #    Effective sigma scales with sqrt(C): more droplets = stronger blur.
-        #    When C=0, effective_sigma=0 → no blur applied.
-        effective_sigma = sigma * np.sqrt(coverage)
+        H, W = img.shape[:2]
         
+        # Generate spatial mask based on surface type
+        if surface == "Hydrophilic coat":
+            # Hydrophilic surfaces form a uniform film.
+            # Using mask=1.0 applies the exact same global degradation as before,
+            # correctly scaling blur by sqrt(coverage) and applying global tau.
+            mask = np.ones((H, W), dtype=np.float32)
+        elif coverage == 0.0:
+            mask = np.zeros((H, W), dtype=np.float32)
+        else:
+            mask = self.generate_spatial_mask(H, W, coverage)
+            
+        mask_3c = np.expand_dims(mask, axis=-1)
+        
+        # 2. Apply Mie scattering blur
+        effective_sigma = sigma * np.sqrt(coverage) if coverage > 0 else 0
         if effective_sigma > 0.5:
             ksize = int(2 * np.ceil(3 * effective_sigma) + 1)
             if ksize % 2 == 0:
                 ksize += 1
-            img_blurred = cv2.GaussianBlur(img, (ksize, ksize), sigmaX=effective_sigma)
+            img_blurred_full = cv2.GaussianBlur(img, (ksize, ksize), sigmaX=effective_sigma)
         else:
-            img_blurred = img.copy()
+            img_blurred_full = img.astype(np.float32)
+            
+        # Blend sharp and blurred images based on spatial mask
+        img_float = img.astype(np.float32)
+        img_blurred_local = img_float * (1.0 - mask_3c) + img_blurred_full.astype(np.float32) * mask_3c
         
-        # 3. Apply Beer-Lambert transmittance (attenuation)
-        img_dark = img_blurred.astype(np.float32) * tau
+        # 3. Apply Beer-Lambert transmittance (attenuation) spatially
+        tau_local = 1.0 - mask_3c * (1.0 - tau)
+        img_dark = img_blurred_local * tau_local
         
-        # 4. Add veiling glare (scattered light haze)
-        #    When light is scattered by droplets, some of it becomes a
-        #    uniform bright "veil" overlaid on the image. This creates
-        #    the washed-out, milky look of real fogged glass.
-        #    Glare intensity = fraction of lost light that becomes haze.
+        # 4. Add veiling glare (scattered light haze) spatially
         glare_fraction = 0.35  # 35% of scattered light becomes haze
-        glare_intensity = (1.0 - tau) * glare_fraction * 255.0
+        glare_intensity = (1.0 - tau_local) * glare_fraction * 255.0
         img_corrupted = img_dark + glare_intensity
         
         img_corrupted = np.clip(img_corrupted, 0, 255).astype(np.uint8)
@@ -84,4 +114,3 @@ if __name__ == "__main__":
     print(f"Test on dummy image at t=180s.")
     print(f"Original mean: 255.0")
     print(f"Corrupted mean: {mean_val:.2f}")
-    
