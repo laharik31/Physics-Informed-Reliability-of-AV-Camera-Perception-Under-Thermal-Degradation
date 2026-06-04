@@ -146,11 +146,11 @@ pandas, numpy, opencv-python, ultralytics, matplotlib, requests
 - Run the evaluation on more environmental conditions (vary ΔT, RH, surface)
 - May need to move to a cloud GPU (Google Colab) for the full dataset
 
-### ⬜ Phase 8: Paper Integration
-- Generate publication-quality plots for the RAMS 2027 paper
-- Compute formal reliability metrics: MTTF, availability A(t), mission reliability R(T)
-- Compare YOLOv8 results against Yashitha's theoretical τ_th = 0.38 threshold
-- Potentially test additional detectors (HybridNets, YOLOP) for comparison
+### ✅ Phase 8: Paper Integration & Layer 3 Reliability Metrics
+- Generated publication-quality plots (Availability Curves, Detection Grids) for the RAMS 2027 paper.
+- Computed formal reliability metrics: **MTTF, MTTR, and Availability $A(t)$** using a strict YOLOv8 failure threshold of `mAP@50 = 0.060`.
+- Compiled the comprehensive technical report detailing the entire three-layer architecture and experimental findings.
+- **See `docs/RAMS2027_Perception_Report.md` for the final paper-ready documentation and metrics.**
 
 ---
 
