@@ -9,6 +9,7 @@ class OpticalCorruptor:
             lookup (PhysicsLookup): Initialized PhysicsLookup instance.
         """
         self.lookup = lookup
+        self.mask_cache = {}
         
     def generate_spatial_mask(self, H, W, coverage, t_s):
         """
@@ -54,15 +55,15 @@ class OpticalCorruptor:
         
         return mask.astype(np.float32)
 
-    def corrupt_image(self, img, t_s, delta_t_c=5, rh=0.80, surface="Untreated glass"):
+    def corrupt_image(self, img, t_s, delta_t_c=5, rh=0.80, surface="Untreated glass", mode="patchy"):
         """
         Applies physics-informed optical degradation to an image.
         """
         # 1. Fetch parameters (tau, sigma, AND coverage C)
         tau, sigma, coverage = self.lookup.get_optical_params(t_s, delta_t_c, rh, surface)
         
-        # Override coverage for smooth progression as requested
-        if surface == "Untreated glass":
+        # Override coverage for smooth progression as requested (Patchy mode only)
+        if mode == "patchy" and surface == "Untreated glass":
             if t_s == 60:
                 coverage = 0.21
             elif t_s == 120:
@@ -72,16 +73,18 @@ class OpticalCorruptor:
                 
         H, W = img.shape[:2]
         
-        # Generate spatial mask based on surface type
-        if surface == "Hydrophilic coat":
-            # Hydrophilic surfaces form a uniform film.
-            # Using mask=1.0 applies the exact same global degradation as before,
-            # correctly scaling blur by sqrt(coverage) and applying global tau.
-            mask = np.ones((H, W), dtype=np.float32)
-        elif coverage == 0.0:
-            mask = np.zeros((H, W), dtype=np.float32)
+        # Generate spatial mask based on surface type and mode
+        cache_key = (surface, t_s, H, W, mode)
+        if cache_key in self.mask_cache:
+            mask = self.mask_cache[cache_key]
         else:
-            mask = self.generate_spatial_mask(H, W, coverage, t_s)
+            if mode == "uniform" or surface == "Hydrophilic coat":
+                mask = np.ones((H, W), dtype=np.float32)
+            elif coverage == 0.0:
+                mask = np.zeros((H, W), dtype=np.float32)
+            else:
+                mask = self.generate_spatial_mask(H, W, coverage, t_s)
+            self.mask_cache[cache_key] = mask
             
         mask_3c = np.expand_dims(mask, axis=-1)
         

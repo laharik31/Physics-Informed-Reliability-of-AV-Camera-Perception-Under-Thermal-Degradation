@@ -225,3 +225,34 @@ afbec051  Remove temporary file ~$MS2027_Kickoff_Plan.docx
 4bb927d9  Implement Layer 2 perception stack (lookup and corruptor)
 070a26f3  Initial commit: Add Layer 1 physics MATLAB code and documentation
 ```
+
+---
+
+## 8. BDD100K Robustness Evaluation (True mAP)
+
+After validating the pipeline on small samples, we ran a massive **10K-image evaluation** using the BDD100K validation dataset on an RTX 6000 Ada GPU to capture true `mAP@50` under thermal degradation. 
+
+We developed **two distinct condensation models**, parameterizable in `experiment_bdd.py`, to study how the physical morphology of the condensation layer affects object detection.
+
+### Version 1: Uniform Condensation Model (`--mode uniform --rh 0.80`)
+This was the baseline model. It assumes the condensation forms a perfectly uniform film across the entire lens surface.
+* **Methodology:** We applied the Point Spread Function (PSF) Gaussian blur and Beer-Lambert Veiling Glare globally to the image, strictly proportional to the physical total volume of water condensed on the lens.
+* **Environment:** Tested at 80% Relative Humidity.
+* **Results:** The uniform fog caused a dramatic but smooth decline in `mAP@50`, blinding the camera uniformly. 
+
+### Version 2: Patchy Spatial Masks (`--mode patchy --rh 0.90`)
+Because untreated glass naturally causes water to bead up randomly rather than forming a perfect film, we created a highly realistic patchy spatial mask using procedural low-frequency noise and a time-delayed thermal radial gradient (fog creeps from the cold edges to the warm center).
+* **Methodology:** We decoupled the *volume* of the water from the *area* of the spread. The noise mask accurately simulates un-coalesced droplets, causing localized light scattering and harsh dark obscuration patches.
+* **Environment:** Tested at 90% Relative Humidity (creating thicker, more aggressive droplet formation).
+
+![Patchy Spatial Mask Progression](results/spatial_masks_visualization_patchy.png)
+
+### Final 10K Image Results (Patchy Model)
+We executed the final experiment comparing all 4 glass coatings using the patchy model for untreated glass:
+`python3 python/experiment_bdd.py --all-surfaces --mode patchy --rh 0.90`
+
+1. **Superhydrophobic & Hydrophobic**: Maintained perfectly stable `mAP@50 = 0.087`. The physics engine correctly calculated `C=0.0` (zero condensation) because these surfaces flawlessly repelled the water even at 90% humidity.
+2. **Hydrophilic**: Dropped to `mAP@50 = 0.046` at peak fog (`t=180s`). Because hydrophilic coatings force water to spread out into a uniform film, they preserve basic light transmittance, allowing YOLOv8 to still see through the hazy blur.
+3. **Untreated Glass (Patchy)**: Plummets to **`mAP@50 = 0.033`** at peak fog (`t=180s`). Even though untreated glass had less physical area covered by water than the hydrophilic film, the chaotic, non-uniform light scattering of the droplet beads completely devastated the neural network's spatial filters. The patchy fog is significantly more destructive to AI perception than a uniform blur!
+
+![Final Availability Curve](results/bdd_availability_curve_combined.png)

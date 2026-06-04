@@ -51,29 +51,43 @@ SURFACE_STYLES = {
 }
 
 
+import multiprocessing
+from functools import partial
+
+def _process_single_image(filename, image_dir, output_dir, corruptor, t_s, delta_t_c, rh, surface, mode):
+    img = cv2.imread(os.path.join(image_dir, filename))
+    if img is not None:
+        corrupted = corruptor.corrupt_image(img, t_s=t_s, delta_t_c=delta_t_c, rh=rh, surface=surface, mode=mode)
+        cv2.imwrite(os.path.join(output_dir, filename), corrupted)
+
 def corrupt_dataset(image_dir: str, output_dir: str, corruptor: OpticalCorruptor,
-                    t_s: float, delta_t_c: float, rh: float, surface: str,
+                    t_s: float, delta_t_c: float, rh: float, surface: str, mode: str,
                     max_images: int = None) -> int:
-    """Apply physics-informed corruption to all images in a directory."""
+    """Apply physics-informed corruption to all images in a directory using multiprocessing."""
     os.makedirs(output_dir, exist_ok=True)
     image_files = sorted([f for f in os.listdir(image_dir) if f.endswith('.jpg')])
     if max_images is not None:
         image_files = image_files[:max_images]
 
-    for i, filename in enumerate(image_files):
-        img = cv2.imread(os.path.join(image_dir, filename))
-        if img is None:
-            continue
-        corrupted = corruptor.corrupt_image(img, t_s=t_s, delta_t_c=delta_t_c,
-                                            rh=rh, surface=surface)
-        cv2.imwrite(os.path.join(output_dir, filename), corrupted)
-        if (i + 1) % 500 == 0:
-            print(f"    Corrupted {i+1}/{len(image_files)} images...")
+    # Pre-generate and cache the spatial mask once so workers don't duplicate effort
+    if image_files:
+        sample_img = cv2.imread(os.path.join(image_dir, image_files[0]))
+        if sample_img is not None:
+            corruptor.corrupt_image(sample_img, t_s=t_s, delta_t_c=delta_t_c, rh=rh, surface=surface, mode=mode)
+
+    func = partial(_process_single_image, image_dir=image_dir, output_dir=output_dir,
+                   corruptor=corruptor, t_s=t_s, delta_t_c=delta_t_c, rh=rh, surface=surface, mode=mode)
+                   
+    with multiprocessing.Pool(processes=64) as pool:
+        for i, _ in enumerate(pool.imap_unordered(func, image_files)):
+            if (i + 1) % 1000 == 0:
+                print(f"    Corrupted {i+1}/{len(image_files)} images...")
+                
     return len(image_files)
 
 
 def run_single_surface(model, lookup, corruptor, surface, t_snapshots,
-                       delta_t, rh, data_root, clean_image_dir, label_dir,
+                       delta_t, rh, mode, data_root, clean_image_dir, label_dir,
                        corrupted_base, max_images):
     """Run the evaluation loop for a single surface coating."""
     results = []
@@ -102,7 +116,7 @@ def run_single_surface(model, lookup, corruptor, surface, t_snapshots,
         else:
             print(f"  Corrupting images...")
             n = corrupt_dataset(clean_image_dir, corrupted_base, corruptor,
-                                t_s=t, delta_t_c=delta_t, rh=rh, surface=surface,
+                                t_s=t, delta_t_c=delta_t, rh=rh, surface=surface, mode=mode,
                                 max_images=max_images)
             print(f"  Corrupted {n} images → {corrupted_base}")
 
@@ -279,7 +293,7 @@ def plot_combined(all_results, rh, delta_t, out_dir):
 
 
 def run_experiment(data_root: str = "data/bdd100k", max_images: int = None,
-                   surfaces: list = None):
+                   surfaces: list = None, rh: float = 0.90, mode: str = "patchy"):
     """Main experiment: evaluate one or more surface coatings."""
     data_root = os.path.abspath(data_root)
     yaml_path = os.path.join(data_root, "bdd100k.yaml")
@@ -316,7 +330,6 @@ def run_experiment(data_root: str = "data/bdd100k", max_images: int = None,
 
     t_snapshots = [0, 60, 120, 180, 300, 450, 600]
     delta_t = 5
-    rh = 0.80
     corrupted_base = os.path.join(data_root, "images", "val_corrupted")
     out_dir = "results"
     os.makedirs(out_dir, exist_ok=True)
@@ -379,6 +392,10 @@ if __name__ == "__main__":
                         help="Single surface to evaluate (default: Untreated glass)")
     parser.add_argument("--all-surfaces", action="store_true",
                         help="Evaluate all 4 glass coatings")
+    parser.add_argument("--mode", type=str, choices=["uniform", "patchy"], default="patchy",
+                        help="Condensation mode (default: patchy)")
+    parser.add_argument("--rh", type=float, default=0.90,
+                        help="Relative humidity (default: 0.90)")
     args = parser.parse_args()
 
     if args.all_surfaces:
@@ -389,4 +406,4 @@ if __name__ == "__main__":
         surfaces = ["Untreated glass"]
 
     run_experiment(data_root=args.data_root, max_images=args.max_images,
-                   surfaces=surfaces)
+                   surfaces=surfaces, rh=args.rh, mode=args.mode)
