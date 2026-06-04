@@ -48,6 +48,14 @@ def generate_detection_grid(model, corruptor, lookup, img_path, surface, mode, r
             tau, sigma, C = 1.0, 0.0, 0.0
         else:
             tau, sigma, C = lookup.get_optical_params(t, delta_t, rh, surface)
+            # Mirror the corruptor's C overrides so labels match actual corruption
+            if mode == "patchy" and surface == "Untreated glass":
+                if t == 60:
+                    C = 0.21
+                elif t == 120:
+                    C = 0.25
+                elif t == 180:
+                    C = 0.28
             # Clear the corruptor mask cache so each call is fresh
             corruptor.mask_cache.clear()
             img = corruptor.corrupt_image(original_img, t, delta_t, rh, surface, mode=mode)

@@ -181,11 +181,7 @@ To answer this, we forced identical coverage fractions C = {0.21, 0.25, 0.28} fo
 
 **Observation:** At the same coverage C=0.28, the uniform model produces a translucent haze that preserves the general scene structure. The patchy model, however, creates opaque clusters that completely obliterate portions of the image. This explains why patchy fog destroys AI perception more severely.
 
-### Hydrophilic Coat — Uniform vs Patchy at Matched C
-
-![C-Value Comparison: Hydrophilic Coat](../results/c_value_comparison_hydrophilic_coat.png)
-
-**Observation:** The hydrophilic coat has higher transmittance (τ ≈ 0.66-0.73 vs τ ≈ 0.38-0.48 for untreated glass) at the same coverage. The uniform mode produces only mild haze. Even the patchy mode is less destructive because the underlying transmittance is better.
+> **Note:** A hydrophilic coat comparison is not included because hydrophilic coatings physically force water into a uniform film. In our pipeline, hydrophilic always uses a uniform spatial mask regardless of mode — so both columns would look identical.
 
 ---
 
