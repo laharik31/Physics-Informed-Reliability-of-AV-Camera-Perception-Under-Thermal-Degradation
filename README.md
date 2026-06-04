@@ -203,7 +203,7 @@ This was the baseline model. It assumes the condensation forms a perfectly unifo
 * **Environment:** Tested at 80% Relative Humidity.
 * **Results:** The uniform fog caused a dramatic but smooth decline in `mAP@50`, blinding the camera uniformly. 
 
-![Availability Curve (Uniform)](results/bdd_availability_curve_combined_uniform.png)
+![Availability Curve (Uniform)](results/bdd_availability_curve_combined_uniform_rh80.png)
 
 **Visual Grids for Uniform Condensation (RH=80%)**
 *Untreated Glass (Uniform)*
@@ -241,4 +241,7 @@ We executed the final experiment comparing all 4 glass coatings using the patchy
 2. **Hydrophilic**: Dropped to `mAP@50 = 0.046` at peak fog (`t=180s`). Because hydrophilic coatings force water to spread out into a uniform film, they preserve basic light transmittance, allowing YOLOv8 to still see through the hazy blur.
 3. **Untreated Glass (Patchy)**: Plummets to **`mAP@50 = 0.033`** at peak fog (`t=180s`). Even though untreated glass had less physical area covered by water than the hydrophilic film, the chaotic, non-uniform light scattering of the droplet beads completely devastated the neural network's spatial filters. The patchy fog is significantly more destructive to AI perception than a uniform blur!
 
-![Final Availability Curve](results/bdd_availability_curve_combined.png)
+![Final Availability Curve (Patchy, RH=90%)](results/bdd_availability_curve_combined_patchy_rh90.png)
+
+*Comparison: Patchy Condensation at RH=80%*
+![Final Availability Curve (Patchy, RH=80%)](results/bdd_availability_curve_combined_patchy_rh80.png)

@@ -286,7 +286,7 @@ def plot_combined(all_results, rh, delta_t, out_dir, mode):
     ax.set_xlim(-10, 620)
     plt.tight_layout()
 
-    plot_path = os.path.join(out_dir, f"bdd_availability_curve_combined_{mode}.png")
+    plot_path = os.path.join(out_dir, f"bdd_availability_curve_combined_{mode}_rh{int(rh*100)}.png")
     fig.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"\nCombined availability curve saved to {plot_path}")
@@ -367,7 +367,7 @@ def run_experiment(data_root: str = "data/bdd100k", max_images: int = None,
         plot_single_surface(results, surface, rh, delta_t, out_dir)
 
     # Save all results to CSV
-    csv_path = os.path.join(out_dir, "bdd_results.csv")
+    csv_path = os.path.join(out_dir, f"bdd_results_{mode}_rh{int(rh*100)}.csv")
     with open(csv_path, 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=["surface", "t_s", "tau", "sigma",
                                                 "coverage", "mAP50", "mAP50_95"])
