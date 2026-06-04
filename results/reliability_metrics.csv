@@ -1,0 +1,13 @@
+Mode,RH(%),Surface,MTTF(s),MTTR(s),Availability(%)
+Uniform,80,Untreated glass,35.9,41.7,69.0
+Uniform,80,Hydrophilic coat,47.2,24.5,73.8
+Uniform,80,Hydrophobic coat,∞,0.0,100.0
+Uniform,80,Superhydrophobic,∞,0.0,100.0
+Patchy,80,Untreated glass,83.2,52.1,75.2
+Patchy,80,Hydrophilic coat,47.2,24.5,73.8
+Patchy,80,Hydrophobic coat,∞,0.0,100.0
+Patchy,80,Superhydrophobic,∞,0.0,100.0
+Patchy,90,Untreated glass,70.3,59.8,71.8
+Patchy,90,Hydrophilic coat,40.8,37.5,70.5
+Patchy,90,Hydrophobic coat,∞,0.0,100.0
+Patchy,90,Superhydrophobic,∞,0.0,100.0

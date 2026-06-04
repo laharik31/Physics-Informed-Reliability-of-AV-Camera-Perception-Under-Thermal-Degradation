@@ -276,18 +276,36 @@ The thermal heater activation at t=180s consistently restores full camera perfor
 
 ---
 
-## 10. Next Steps: Layer 3 Reliability Metrics
+## 10. Layer 3: Reliability Metrics
 
-With L2 complete, the final phase is to compute formal reliability engineering metrics from the availability curve data:
+Using a strict failure threshold of **mAP@50 = 0.060** (the point where YOLOv8 completely loses the ability to detect clear objects like vehicles), we extracted formal reliability engineering metrics from the availability curves.
 
-| Metric | Definition | Purpose |
-|--------|-----------|---------|
-| **Failure Threshold** | mAP@50 value below which the system is "failed" | Defines what "blind" means |
-| **MTTF** | Mean Time To Failure — seconds until mAP crosses threshold | Quantifies durability |
-| **R(T)** | Mission Reliability — probability of surviving a T-second mission | Quantifies safety |
-| **A(t)** | Availability — fraction of time the system is operational | Quantifies uptime |
+- **MTTF (Mean Time To Failure):** The interpolated time in seconds until the perception system crosses the failure threshold.
+- **MTTR (Mean Time To Recovery):** The time it takes for the system to recover *after* the heater is activated at $t=180$s.
+- **Availability ($A$):** The total percentage of the 600-second thermal cycle where the camera is operational.
 
-These metrics will be extracted from the CSV result files (`bdd_results_patchy_rh90.csv`, etc.) and tabulated for the final RAMS 2027 paper.
+### Reliability Results Table
+
+| Mode | RH (%) | Surface Coating | MTTF (s) | MTTR (s) | Availability (%) |
+|------|--------|-----------------|----------|----------|------------------|
+| Uniform | 80 | Untreated glass | 35.9 | 41.7 | 69.0% |
+| Uniform | 80 | Hydrophilic coat | 47.2 | 24.5 | 73.8% |
+| Uniform | 80 | Hydrophobic coat | ∞ | 0.0 | 100.0% |
+| Uniform | 80 | Superhydrophobic | ∞ | 0.0 | 100.0% |
+| Patchy | 80 | Untreated glass | 83.2 | 52.1 | 75.2% |
+| Patchy | 80 | Hydrophilic coat | 47.2 | 24.5 | 73.8% |
+| Patchy | 80 | Hydrophobic coat | ∞ | 0.0 | 100.0% |
+| Patchy | 80 | Superhydrophobic | ∞ | 0.0 | 100.0% |
+| Patchy | 90 | Untreated glass | 70.3 | 59.8 | 71.8% |
+| Patchy | 90 | Hydrophilic coat | 40.8 | 37.5 | 70.5% |
+| Patchy | 90 | Hydrophobic coat | ∞ | 0.0 | 100.0% |
+| Patchy | 90 | Superhydrophobic | ∞ | 0.0 | 100.0% |
+
+### Key Takeaways for RAMS 2027
+1. **Higher Humidity Accelerates Failure:** Increasing RH from 80% to 90% in Patchy mode slashes the MTTF of untreated glass from 83.2s down to 70.3s.
+2. **Patchy vs Uniform Failure Mechanisms:** Interestingly, Patchy fog on untreated glass has a *longer* MTTF (83.2s) than Uniform fog (35.9s). This is because patchy fog initially leaves clear gaps that YOLO can exploit, whereas uniform fog blurs the entire image immediately. However, once patchy fog reaches peak coverage, it destroys perception more thoroughly.
+3. **Hydrophilic Consistency:** Because hydrophilic coatings force water into a uniform film, their metrics are identical regardless of whether the simulated environment is "patchy" or "uniform", proving the coating functions exactly as intended physically.
+4. **Hydrophobic Dominance:** The only way to guarantee 100% availability during a high-humidity thermal shift is by employing hydrophobic or superhydrophobic coatings.
 
 ---
 
