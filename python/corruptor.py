@@ -62,8 +62,9 @@ class OpticalCorruptor:
         # 1. Fetch parameters (tau, sigma, AND coverage C)
         tau, sigma, coverage = self.lookup.get_optical_params(t_s, delta_t_c, rh, surface)
         
-        # Override coverage for smooth progression as requested (Patchy mode only)
-        if mode == "patchy" and surface == "Untreated glass":
+        # Override coverage for smooth progression as requested
+        # Apply C = 0.21, 0.25, 0.28 for both Untreated glass and Hydrophilic coat
+        if surface in ("Untreated glass", "Hydrophilic coat"):
             if t_s == 60:
                 coverage = 0.21
             elif t_s == 120:

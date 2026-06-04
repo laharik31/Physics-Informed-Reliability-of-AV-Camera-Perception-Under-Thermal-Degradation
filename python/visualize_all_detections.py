@@ -49,7 +49,7 @@ def generate_detection_grid(model, corruptor, lookup, img_path, surface, mode, r
         else:
             tau, sigma, C = lookup.get_optical_params(t, delta_t, rh, surface)
             # Mirror the corruptor's C overrides so labels match actual corruption
-            if mode == "patchy" and surface == "Untreated glass":
+            if surface in ("Untreated glass", "Hydrophilic coat"):
                 if t == 60:
                     C = 0.21
                 elif t == 120:
