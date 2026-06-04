@@ -38,7 +38,7 @@ def generate_detection_grid(model, corruptor, lookup, img_path, surface, mode, r
 
     original_img = cv2.resize(original_img, (640, 480))
 
-    fig, axes = plt.subplots(2, 4, figsize=(24, 10))
+    fig, axes = plt.subplots(2, 4, figsize=(24, 14))
     axes_flat = axes.flatten()
 
     for i, t in enumerate(T_SNAPSHOTS):
@@ -70,7 +70,7 @@ def generate_detection_grid(model, corruptor, lookup, img_path, surface, mode, r
         axes_flat[i].imshow(plotted_rgb)
         axes_flat[i].set_title(
             f"t={t}s  |  τ={tau:.2f}, C={C:.2f}\nDetections: {n_detections}",
-            fontsize=11, fontweight='bold'
+            fontsize=12, fontweight='bold', pad=15
         )
         axes_flat[i].axis('off')
 
@@ -81,9 +81,9 @@ def generate_detection_grid(model, corruptor, lookup, img_path, surface, mode, r
     safe_surface = surface.replace(" ", "_").lower()
     fig.suptitle(
         f"YOLOv8 Object Detection — {surface} ({mode.capitalize()} Condensation, RH={int(rh*100)}%)",
-        fontsize=16, fontweight='bold', y=1.01
+        fontsize=18, fontweight='bold'
     )
-    plt.tight_layout()
+    plt.subplots_adjust(top=0.90, hspace=0.35)
 
     out_path = os.path.join(out_dir, f"detections_{mode}_{safe_surface}_rh{int(rh*100)}.png")
     fig.savefig(out_path, dpi=200, bbox_inches='tight')
