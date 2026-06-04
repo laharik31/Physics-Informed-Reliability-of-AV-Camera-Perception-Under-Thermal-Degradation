@@ -38,7 +38,7 @@ def generate_detection_grid(model, corruptor, lookup, img_path, surface, mode, r
 
     original_img = cv2.resize(original_img, (640, 480))
 
-    fig, axes = plt.subplots(2, 4, figsize=(24, 14))
+    fig, axes = plt.subplots(2, 4, figsize=(24, 12))
     axes_flat = axes.flatten()
 
     for i, t in enumerate(T_SNAPSHOTS):
@@ -83,7 +83,7 @@ def generate_detection_grid(model, corruptor, lookup, img_path, surface, mode, r
         f"YOLOv8 Object Detection — {surface} ({mode.capitalize()} Condensation, RH={int(rh*100)}%)",
         fontsize=18, fontweight='bold'
     )
-    plt.subplots_adjust(top=0.90, hspace=0.35)
+    plt.subplots_adjust(top=0.92, hspace=0.20)
 
     out_path = os.path.join(out_dir, f"detections_{mode}_{safe_surface}_rh{int(rh*100)}.png")
     fig.savefig(out_path, dpi=200, bbox_inches='tight')
