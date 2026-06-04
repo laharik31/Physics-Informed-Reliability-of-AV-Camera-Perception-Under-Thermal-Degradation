@@ -259,7 +259,7 @@ def plot_single_surface(results, surface, rh, delta_t, out_dir):
         plt.close()
 
 
-def plot_combined(all_results, rh, delta_t, out_dir):
+def plot_combined(all_results, rh, delta_t, out_dir, mode):
     """Generate a combined availability curve comparing all surfaces."""
     fig, ax = plt.subplots(figsize=(14, 8))
 
@@ -286,7 +286,7 @@ def plot_combined(all_results, rh, delta_t, out_dir):
     ax.set_xlim(-10, 620)
     plt.tight_layout()
 
-    plot_path = os.path.join(out_dir, "bdd_availability_curve_combined.png")
+    plot_path = os.path.join(out_dir, f"bdd_availability_curve_combined_{mode}.png")
     fig.savefig(plot_path, dpi=300, bbox_inches='tight')
     plt.close()
     print(f"\nCombined availability curve saved to {plot_path}")
@@ -345,7 +345,7 @@ def run_experiment(data_root: str = "data/bdd100k", max_images: int = None,
 
         results = run_single_surface(
             model, lookup, corruptor, surface, t_snapshots,
-            delta_t, rh, data_root, clean_image_dir, label_dir,
+            delta_t, rh, mode, data_root, clean_image_dir, label_dir,
             corrupted_base, max_images
         )
         all_results[surface] = results
@@ -377,7 +377,7 @@ def run_experiment(data_root: str = "data/bdd100k", max_images: int = None,
 
     # Generate combined plot if multiple surfaces
     if len(surfaces) > 1:
-        plot_combined(all_results, rh, delta_t, out_dir)
+        plot_combined(all_results, rh, delta_t, out_dir, mode)
 
     print(f"\n✅ BDD100K experiment complete!")
 

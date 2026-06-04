@@ -203,6 +203,8 @@ This was the baseline model. It assumes the condensation forms a perfectly unifo
 * **Environment:** Tested at 80% Relative Humidity.
 * **Results:** The uniform fog caused a dramatic but smooth decline in `mAP@50`, blinding the camera uniformly. 
 
+![Availability Curve (Uniform)](results/bdd_availability_curve_combined_uniform.png)
+
 **Visual Grids for Uniform Condensation (RH=80%)**
 *Untreated Glass (Uniform)*
 ![Untreated Glass (Uniform)](results/corrupted_images_uniform/sample_0_grid_untreated_glass_uniform.jpg)
