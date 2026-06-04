@@ -6,10 +6,18 @@ import cv2
 import glob
 import os
 import numpy as np
+import argparse
 from lookup import PhysicsLookup
 from corruptor import OpticalCorruptor
 
-def visualize():
+ALL_SURFACES = [
+    "Untreated glass",
+    "Hydrophilic coat",
+    "Hydrophobic coat",
+    "Superhydrophobic",
+]
+
+def visualize(surface, rh, mode, out_dir):
     lookup = PhysicsLookup()
     corruptor = OpticalCorruptor(lookup)
 
@@ -20,10 +28,7 @@ def visualize():
 
     t_snapshots = [0, 60, 120, 180, 300, 450, 600]
     delta_t = 5
-    rh = 0.80
-    surface = "Untreated glass"
 
-    out_dir = "results/corrupted_images"
     os.makedirs(out_dir, exist_ok=True)
 
     # For each image, save the corrupted version at every time snapshot
@@ -38,7 +43,7 @@ def visualize():
 
         row_images = []
         for t in t_snapshots:
-            corrupted = corruptor.corrupt_image(img, t_s=t, delta_t_c=delta_t, rh=rh, surface=surface)
+            corrupted = corruptor.corrupt_image(img, t_s=t, delta_t_c=delta_t, rh=rh, surface=surface, mode=mode)
 
             # Add label to the image
             label = f"t={t}s"
@@ -50,7 +55,8 @@ def visualize():
             row_images.append(corrupted)
 
             # Also save individual corrupted images
-            individual_path = os.path.join(out_dir, f"sample_{img_idx}_t{t}s.jpg")
+            safe_surface = surface.replace(" ", "_").lower()
+            individual_path = os.path.join(out_dir, f"sample_{img_idx}_{safe_surface}_{mode}_t{t}s.jpg")
             cv2.imwrite(individual_path, corrupted)
 
         # Build a grid: top row = first 4, bottom row = last 3 + blank
@@ -62,11 +68,32 @@ def visualize():
         bottom_row = np.hstack(bottom_images)
 
         grid = np.vstack([top_row, bottom_row])
-        grid_path = os.path.join(out_dir, f"sample_{img_idx}_grid.jpg")
+        safe_surface = surface.replace(" ", "_").lower()
+        grid_path = os.path.join(out_dir, f"sample_{img_idx}_grid_{safe_surface}_{mode}.jpg")
         cv2.imwrite(grid_path, grid)
-        print(f"Saved grid for sample_{img_idx} -> {grid_path}")
+        print(f"Saved grid for sample_{img_idx} ({surface}, {mode}) -> {grid_path}")
 
     print(f"\nAll corrupted images saved to {out_dir}/")
 
 if __name__ == "__main__":
-    visualize()
+    parser = argparse.ArgumentParser(description="Visualize Corruption Grids")
+    parser.add_argument("--surface", type=str, default=None,
+                        help="Single surface to evaluate")
+    parser.add_argument("--all-surfaces", action="store_true",
+                        help="Evaluate all 4 glass coatings")
+    parser.add_argument("--mode", type=str, choices=["uniform", "patchy"], default="patchy",
+                        help="Condensation mode (default: patchy)")
+    parser.add_argument("--rh", type=float, default=0.90,
+                        help="Relative humidity (default: 0.90)")
+    args = parser.parse_args()
+
+    if args.all_surfaces:
+        surfaces = ALL_SURFACES
+    elif args.surface:
+        surfaces = [args.surface]
+    else:
+        surfaces = ["Untreated glass"]
+
+    out_dir = f"results/corrupted_images_{args.mode}"
+    for surf in surfaces:
+        visualize(surf, args.rh, args.mode, out_dir)

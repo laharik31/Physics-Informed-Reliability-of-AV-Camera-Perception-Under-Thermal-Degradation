@@ -140,7 +140,7 @@ pandas, numpy, opencv-python, ultralytics, matplotlib, requests
 - Generated availability curve plot (mAP vs time)
 - All results pushed to GitHub under `initial_results/`
 
-### ⬜ Phase 7: Full Dataset Scale-up
+### ✅ Phase 7: Full Dataset Scale-up
 - Replace the 5 dummy images with a real driving dataset (BDD100K)
 - Compute true mAP using ground-truth bounding box annotations
 - Run the evaluation on more environmental conditions (vary ΔT, RH, surface)
@@ -154,44 +154,7 @@ pandas, numpy, opencv-python, ultralytics, matplotlib, requests
 
 ---
 
-## 5. Results
-
-### Corrupted Image Grid (Sample 0)
-
-Shows the same image at 7 time snapshots. Notice: clear at t=0s → foggy/hazy at t=60s → heater recovery by t=300s → fully clear at t=600s.
-
-![Corruption Progression](initial_results/corrupted_images/sample_0_grid.jpg)
-
-### Availability Curve
-
-YOLOv8 detection confidence drops ~50% during peak condensation and fully recovers after heater activation.
-
-![Availability Curve](initial_results/availability_curve.png)
-
-### Numerical Results
-
-| Time | τ (transmittance) | C (coverage) | Proxy mAP | % Drop from Clean |
-|------|-------------------|--------------|-----------|-------------------|
-| 0s | 1.00 | 0.00 | **0.566** | 0% (baseline) |
-| 60s | 0.38 | 0.23 | **0.281** | −50.3% |
-| 120s | 0.44 | 0.25 | **0.305** | −46.1% |
-| 180s | 0.48 | 0.25 | **0.327** | −42.2% |
-| 300s | 0.99 | 0.00 | **0.562** | −0.7% |
-| 450s | 1.00 | 0.00 | **0.562** | −0.7% |
-| 600s | 1.00 | 0.00 | **0.566** | 0% (full recovery) |
-
-### Key Findings
-
-1. **Condensation causes a 50% drop in detection confidence** within the first 60 seconds of exposure.
-2. **The blackout window lasts roughly 0–240 seconds.** During this time, YOLOv8 struggles to detect objects reliably.
-3. **The heater fully restores perception within ~120 seconds** of activation (t_heat = 180s). By t=300s, the lens is essentially clear.
-4. **The recovery is fast because** Yashitha's model uses a heater that raises the surface 8.56°C above the dewpoint, giving a recovery time constant of only ~26 seconds (Tanasawa 1991 evaporation model).
-
-> **Note:** These are **proxy mAP values** (average detection confidence), not true mAP. True mAP requires ground-truth annotations, which we'll have in Phase 7 when we integrate BDD100K.
-
----
-
-## 6. How to Run the Pipeline
+## 5. How to Run the Pipeline
 
 ```bash
 # 1. Activate the virtual environment
@@ -215,7 +178,7 @@ Output files are saved to `results/`. Archived copies are in `initial_results/`.
 
 ---
 
-## 7. Git History
+## 6. Git History
 
 ```
 255c25e9  Improve corruption realism: global PSF blur + veiling glare haze
@@ -228,7 +191,7 @@ afbec051  Remove temporary file ~$MS2027_Kickoff_Plan.docx
 
 ---
 
-## 8. BDD100K Robustness Evaluation (True mAP)
+## 7. BDD100K Robustness Evaluation (True mAP)
 
 After validating the pipeline on small samples, we ran a massive **10K-image evaluation** using the BDD100K validation dataset on an RTX 6000 Ada GPU to capture true `mAP@50` under thermal degradation. 
 
@@ -240,11 +203,32 @@ This was the baseline model. It assumes the condensation forms a perfectly unifo
 * **Environment:** Tested at 80% Relative Humidity.
 * **Results:** The uniform fog caused a dramatic but smooth decline in `mAP@50`, blinding the camera uniformly. 
 
+**Visual Grids for Uniform Condensation (RH=80%)**
+*Untreated Glass (Uniform)*
+![Untreated Glass (Uniform)](results/corrupted_images_uniform/sample_0_grid_untreated_glass_uniform.jpg)
+*Hydrophilic Coat (Uniform)*
+![Hydrophilic Coat (Uniform)](results/corrupted_images_uniform/sample_0_grid_hydrophilic_coat_uniform.jpg)
+*Hydrophobic Coat (Uniform)*
+![Hydrophobic Coat (Uniform)](results/corrupted_images_uniform/sample_0_grid_hydrophobic_coat_uniform.jpg)
+*Superhydrophobic (Uniform)*
+![Superhydrophobic (Uniform)](results/corrupted_images_uniform/sample_0_grid_superhydrophobic_uniform.jpg)
+
 ### Version 2: Patchy Spatial Masks (`--mode patchy --rh 0.90`)
 Because untreated glass naturally causes water to bead up randomly rather than forming a perfect film, we created a highly realistic patchy spatial mask using procedural low-frequency noise and a time-delayed thermal radial gradient (fog creeps from the cold edges to the warm center).
 * **Methodology:** We decoupled the *volume* of the water from the *area* of the spread. The noise mask accurately simulates un-coalesced droplets, causing localized light scattering and harsh dark obscuration patches.
 * **Environment:** Tested at 90% Relative Humidity (creating thicker, more aggressive droplet formation).
 
+**Visual Grids for Patchy Condensation (RH=90%)**
+*Untreated Glass (Patchy)*
+![Untreated Glass (Patchy)](results/corrupted_images_patchy/sample_0_grid_untreated_glass_patchy.jpg)
+*Hydrophilic Coat (Patchy)*
+![Hydrophilic Coat (Patchy)](results/corrupted_images_patchy/sample_0_grid_hydrophilic_coat_patchy.jpg)
+*Hydrophobic Coat (Patchy)*
+![Hydrophobic Coat (Patchy)](results/corrupted_images_patchy/sample_0_grid_hydrophobic_coat_patchy.jpg)
+*Superhydrophobic (Patchy)*
+![Superhydrophobic (Patchy)](results/corrupted_images_patchy/sample_0_grid_superhydrophobic_patchy.jpg)
+
+*Procedural noise progression used to generate Patchy masks:*
 ![Patchy Spatial Mask Progression](results/spatial_masks_visualization_patchy.png)
 
 ### Final 10K Image Results (Patchy Model)
